@@ -1,6 +1,6 @@
 numpy
 onnxruntime
-pandas==2.1.2
-matplotlib==3.8.1
-seaborn==0.13.2
+pandas>=2.2.2
+matplotlib>=3.8.1
+seaborn>=0.13.2
 tqdm
