@@ -1,3 +1,60 @@
+# controls_challenge
+
+Hi! This is my submission to the comma.ai controls challenge.
+
+**Final Score: 41.71 on test, 39.94 on train**
+
+## Approach: A 20-Parameter Feedback Controller Evolved with CMA-ES
+
+### Starting Point
+
+The provided PID controller scores about 80.72 on 100 segments. It's purely reactive — it only responds to the current error between target and actual lateral acceleration. I knew I could do better by using the future plan data the simulator provides.
+
+### Failed Attempts
+
+Before landing on the final approach, I tried a few things that didn't work:
+
+- **MPC with the ONNX model**: I tried loading the physics model inside the controller and evaluating candidate actions by simulating forward. This never worked because the simulator uses stochastic sampling (temperature 0.8) while my internal model used expected values, causing the predictions to diverge from reality. Scores ranged from 116 to 105,000. Completely unusable.
+- **Simple Nelder-Mead PID tuning**: Optimizing just 5 PID parameters with scipy got me to about 73. Better than baseline but nowhere near competitive.
+
+### The Final Solution
+
+The winning approach was designing a rich controller structure with 20 tunable parameters, then letting CMA-ES (Covariance Matrix Adaptation Evolution Strategy) find the optimal values.
+
+The controller goes well beyond basic PID. It includes:
+
+- **PID with integral decay** — standard proportional, integral, and derivative terms, plus a second derivative term for anticipating error acceleration. The integral term has a per-step decay factor to prevent windup.
+- **Multi-horizon future plan feedforward** — instead of just reacting to the current error, the controller looks ahead at the planned trajectory at 5 different time horizons (1, 5, 10, 20, and 50 steps ahead). Each horizon has its own learned gain.
+- **Target rate-of-change feedforward** — separate gains for how fast the target is changing at 1-step and 5-step horizons.
+- **Road roll compensation** — a direct feedforward term from the road's roll-induced lateral acceleration.
+- **Velocity-adaptive gains** — the error gain and overall action scale both adjust based on vehicle speed.
+- **Nonlinear error correction** — a cubic error term for more aggressive correction on large errors, plus a separate linear boost that kicks in when the error exceeds 0.5.
+- **Action smoothing** — an exponential moving average on the output action to reduce jerk.
+
+### Optimization
+
+I ran CMA-ES with a population of 20 candidates, evaluating each on 100 data segments. Each generation takes about 10 minutes. The optimization ran for 164 generations total (~27 hours). The convergence was pretty smooth:
+
+| Generation | Best Score |
+|---|---|
+| 1 | 60.52 |
+| 9 | 50.45 |
+| 22 | 42.73 |
+| 50 | 41.73 |
+| 89 | 40.36 |
+| 139 | 39.94 |
+
+The optimizer plateaued around 40 after generation ~89. The final validation on 100 segments came out to 41.71, slightly higher than the training score due to the usual generalization gap.
+
+### What I Learned
+
+The biggest insight was how much the future plan data matters. The basic PID controller completely ignores it. My controller's strongest parameters ended up being the future feedforward gains — the 5-step average feedforward and the road roll compensation had the largest magnitudes after optimization. The P and I gains actually shrank compared to the baseline PID, suggesting the controller shifted from reactive correction to predictive anticipation.
+
+Getting below 40 with a pure feedback controller seems to be near the theoretical limit. The top scores on the leaderboard use model-predictive control or reinforcement learning which can plan multiple steps ahead using the actual physics model — my controller can't do that, it only uses hand-designed features of the future.
+
+---
+
+
 <div align="center">
 <h1>comma Controls Challenge v2</h1>
 
